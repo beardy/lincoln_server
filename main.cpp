@@ -136,8 +136,10 @@ struct eqstr
 
 
 template< typename T_TypeToHash >
-struct SizeTCastHasher {
-  size_t operator()( const T_TypeToHash& i_TypeToHash ) const {
+struct SizeTCastHasher
+{
+  size_t operator()( const T_TypeToHash& i_TypeToHash ) const
+  {
       return size_t( i_TypeToHash );
   }
 };
@@ -165,8 +167,19 @@ struct SizeTCastHasher {
      u_short port_incoming;
      u_short port_outgoing;
 
-     //Window current_window;
+     Window current_window;
+
  };
+
+struct StreamHasher
+{
+  size_t operator()( const Stream& s ) const
+  {
+      return 1;
+      //return size_t( i_TypeToHash );
+  }
+};
+
 
  struct SameStream
 {
@@ -193,7 +206,32 @@ struct SizeTCastHasher {
 
  //activeStreams are the streams that are currently open,
  //Streams that have at least one closed window have been added to the DB
- unordered_set<Stream, SameStream> activeStreams;
+ //unordered_set<Stream, hash<Stream>, SameStream> activeStreams;
+
+ //unordered_set<Stream, StreamHasher, SameStream > activeStreams;
+
+struct StreamKey
+ {
+     in_addr raw_ip_incoming;
+     in_addr raw_ip_outgoing;
+     u_short port_incoming;
+     u_short port_outgoing;
+ };
+
+ struct LessStreamKey
+ {
+     bool operator()(const StreamKey& s1, const StreamKey& s2) const
+     {
+         return( s1.raw_ip_incoming.s_addr < s2.raw_ip_incoming.s_addr ||
+            s1.port_incoming   < s2.port_incoming   ||
+            s1.raw_ip_outgoing.s_addr < s2.raw_ip_outgoing.s_addr ||
+            s1.port_outgoing  < s2.port_outgoing );
+
+     }
+ };
+
+
+ map<StreamKey, Stream,  LessStreamKey> activeStreams;
 
  //activeWindows are windows that have not finished aggregrating traffic
  //None of windows are in the database yet.
@@ -207,7 +245,8 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
     mysqlpp::Connection conn(false);
     //hash_map<const char*, int, hash<const char*>, eqstr> months;
 
-    unordered_set<Stream, SameStream> strrrms;
+    //unordered_set<Stream, SameStream> activeStreams;
+
 
 	static int count = 1;                   /* packet counter */
 
@@ -275,14 +314,12 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 
 
 
-	Stream tempStream;
-	tempStream.raw_ip_incoming;
-	tempStream.raw_ip_outgoing;
+	StreamKey tempStream;
+	tempStream.raw_ip_incoming = ip->ip_dst;
+	tempStream.raw_ip_outgoing = ip->ip_src;
 	tempStream.port_incoming = tcp->th_dport;
 	tempStream.port_outgoing = tcp->th_sport;
 
-	static int lastStreamID = 1;
-	static int lastWindowID = 1;
 
 	bool incoming=0;
 
@@ -290,18 +327,14 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 
 	time_t sniff_time = time(NULL);
 
-	unordered_set<Stream>::iterator iter = activeStreams.find(tempStream);
+	//unordered_set<Stream>::iterator iter = activeStreams.find(tempStream);
+    map<StreamKey, Stream,  LessStreamKey>::iterator iter = activeStreams.find(tempStream);
 	if( iter == activeStreams.end() )
 	{
-        lastStreamID++;
-        tempStream.id = lastStreamID;
-
-
 
         Window tempWindow;
-        lastWindowID++;
-        tempWindow.id = lastWindowID;
-        tempWindow.stream_id = tempStream.id;
+        //tempWindow.id = lastWindowID;
+        //tempWindow.stream_id = tempStream.id;
 
         tempWindow.start_time = sniff_time;
 
@@ -315,22 +348,26 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 	{
         if(incoming)
         {
-            activeWindows[iter->id].size_packets_incoming += packet_length;
-            activeWindows[iter->id].num_packets_incoming++;
+            iter->second.current_window.size_packets_incoming += packet_length;
+            iter->second.current_window.num_packets_incoming++;
+            //activeWindows[iter->id].size_packets_incoming += packet_length;
+            //activeWindows[iter->id].num_packets_incoming++;
         }
         else
         {
-            activeWindows[iter->id].size_packets_outgoing += packet_length;
-            activeWindows[iter->id].num_packets_outgoing++;
+            iter->second.current_window.size_packets_outgoing += packet_length;
+            iter->second.current_window.num_packets_outgoing++;
+            //activeWindows[iter->id].size_packets_outgoing += packet_length;
+            //activeWindows[iter->id].num_packets_outgoing++;
         }
 
 	}
 
-	for( unordered_set<Stream>::iterator i = activeStreams.begin(); i!=activeStreams.end(); i++)
+	for( map<StreamKey, Stream,  LessStreamKey>::iterator i = activeStreams.begin(); i!=activeStreams.end(); i++)
 	{
-        if(sniff_time - activeWindows[i->id].start_time >= WINDOW_TIME)
+        if(sniff_time - i->second.current_window.start_time >= WINDOW_TIME)
         {
-            activeWindows[i->id].end_time = sniff_time;
+            i->second.current_window.end_time = sniff_time;
 
             //DB_Interface.AddWindow( activeWindows[i->id] );
             //
