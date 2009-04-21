@@ -56,8 +56,6 @@ using namespace std;
 //#include <unordered_set>
 //using namespace __gnu_cxx;
 
-#include <mysql++/mysql++.h>
-
 #include "LincolnDatatypes.h"
 #include "DatabaseInterface.h"
 
@@ -208,10 +206,11 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
 	 *  OK, this packet is TCP.
 	 */
 
-	/* define/compute tcp header offset */
+	// define/compute tcp header offset
 	tcp = (struct sniff_tcp*)(packet + SIZE_ETHERNET + size_ip);
 	size_tcp = TH_OFF(tcp)*4;
-	if (size_tcp < 20) {
+	if (size_tcp < 20)
+	{
 		printf("   * Invalid TCP header length: %u bytes\n", size_tcp);
 		return;
 	}
@@ -257,6 +256,10 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
             tempWindow.num_packets_incoming = 1;
         else
             tempWindow.num_packets_outgoing = 1;
+
+
+
+        printf("WINDOW INSERT ID: %d\n",  dbinterface.InsertWindow(tempWindow) );
 
 
 

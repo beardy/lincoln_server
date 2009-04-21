@@ -13,6 +13,7 @@ class DatabaseInterface
 
      int EstablishConnection();
      int InsertStream(const Stream& s);
+     int InsertWindow(const Window& w);
 
 
 };

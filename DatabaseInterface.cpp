@@ -62,18 +62,45 @@ int DatabaseInterface::EstablishConnection()
     }
 
 
+
 }
 
 int DatabaseInterface::InsertStream(const Stream& s)
 {
-     mysqlpp::Query query = conn.query();
+    mysqlpp::Query query = conn.query();
 
-     mysqlpp::String q;
+    char buff[256];
 
-     q = "INSERT INTO streams VALUES(NULL, '4414187441', '2089506384', '110', '25', '89');";
+    sprintf( buff, "INSERT INTO streams VALUES(NULL, '%u', '%u', '%d', '%d', 6 );",
+    s.raw_ip_incoming.s_addr, s.raw_ip_outgoing.s_addr, ntohs(s.port_incoming), ntohs(s.port_outgoing) );
 
-     query.execute(q);
 
-     return query.insert_id();
+    mysqlpp::SimpleResult result = query.execute(buff);
+    printf( "%s \n", result.info());
+
+    return query.insert_id();
+
+}
+
+int DatabaseInterface::InsertWindow(const Window& w)
+{
+    mysqlpp::Query query = conn.query();
+
+
+    //sprintf( buff, "INSERT INTO streams VALUES(NULL, '%u', '%u', '%d', '%d', %d, %d );",
+
+    query << "INSERT INTO windows VALUES(NULL, '" << w.stream_id << "' , '"
+    << mysqlpp::DateTime(w.start_time) << "' , '" << mysqlpp::DateTime(w.end_time) << "' , '"
+    << w.num_packets_incoming  << "' , '" << w.num_packets_outgoing << "' , '"
+    << w.size_packets_incoming << "' , '" << w.size_packets_outgoing << "' );";
+
+    //query.execute();
+
+   // w.start_time, w.end_time, w.num_packets_incoming, w.num_packets_outgoing, w.size_packets_incoming, w.size_packets_outgoing );
+
+    mysqlpp::SimpleResult result = query.execute();
+    printf( "%s \n", result.info());
+
+    return query.insert_id();
 
 }
