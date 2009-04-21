@@ -3,16 +3,16 @@
 #define DBINTERFACE_H
 
 #include <mysql++/mysql++.h>
+#include "LincolnDatatypes.h"
 
 class DatabaseInterface
 {
-     mysqlpp::String test;
-     public:
 
+     public:
      mysqlpp::Connection conn;
 
      int EstablishConnection();
-     void InsertString();
+     int InsertStream(const Stream& s);
 
 
 };

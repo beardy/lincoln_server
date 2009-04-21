@@ -58,6 +58,7 @@ using namespace std;
 
 #include <mysql++/mysql++.h>
 
+#include "LincolnDatatypes.h"
 #include "DatabaseInterface.h"
 
 // default snap length (maximum bytes per packet to capture)
@@ -123,84 +124,8 @@ struct sniff_tcp
         u_short th_urp;                 /* urgent pointer */
 };
 
-void
-got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet);
+void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet);
 
-
-
-struct eqstr
-{
-  bool operator()(const char* s1, const char* s2) const
-  {
-    return strcmp(s1, s2) == 0;
-  }
-};
-
-
-template< typename T_TypeToHash >
-struct SizeTCastHasher
-{
-  size_t operator()( const T_TypeToHash& i_TypeToHash ) const
-  {
-      return size_t( i_TypeToHash );
-  }
-};
-
- struct Window
- {
-     u_short id;
-     u_short stream_id;
-
-     time_t start_time;
-     time_t end_time;
-     int num_packets_incoming;
-     int num_packets_outgoing;
-
-     int size_packets_incoming;
-     int size_packets_outgoing;
-
- };
-
- struct Stream
- {
-     u_short id;
-     in_addr raw_ip_incoming;
-     in_addr raw_ip_outgoing;
-     u_short port_incoming;
-     u_short port_outgoing;
-
-     Window current_window;
-
- };
-
-struct StreamHasher
-{
-  size_t operator()( const Stream& s ) const
-  {
-      return 1;
-      //return size_t( i_TypeToHash );
-  }
-};
-
-
- struct SameStream
-{
-    bool operator()(Stream s1, Stream s2) const
-    {
-        return( s1.raw_ip_incoming.s_addr == s2.raw_ip_incoming.s_addr &&
-            s1.port_incoming   == s2.port_incoming   &&
-            s1.raw_ip_outgoing.s_addr == s2.raw_ip_outgoing.s_addr &&
-            s1.port_outgoing   == s2.port_outgoing   );
-    }
-};
-
- struct SameWindow
-{
-    bool operator()(Window w1, Window w2) const
-    {
-        return( w1.stream_id == w2.stream_id );
-    }
-};
 
 //Windows are at most 300 seconds long (5 minutes)
 #define WINDOW_TIME 300
@@ -211,26 +136,6 @@ struct StreamHasher
  //unordered_set<Stream, hash<Stream>, SameStream> activeStreams;
 
  //unordered_set<Stream, StreamHasher, SameStream > activeStreams;
-
-struct StreamKey
- {
-     in_addr raw_ip_incoming;
-     in_addr raw_ip_outgoing;
-     u_short port_incoming;
-     u_short port_outgoing;
- };
-
- struct LessStreamKey
- {
-     bool operator()(const StreamKey& s1, const StreamKey& s2) const
-     {
-         return( s1.raw_ip_incoming.s_addr < s2.raw_ip_incoming.s_addr ||
-            s1.port_incoming   < s2.port_incoming   ||
-            s1.raw_ip_outgoing.s_addr < s2.raw_ip_outgoing.s_addr ||
-            s1.port_outgoing  < s2.port_outgoing );
-
-     }
- };
 
 
  map<StreamKey, Stream,  LessStreamKey> activeStreams;
@@ -243,10 +148,8 @@ struct StreamKey
  DatabaseInterface dbinterface;
 
 
-void
-got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
+void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 {
-    mysqlpp::Connection conn(false);
     //hash_map<const char*, int, hash<const char*>, eqstr> months;
 
     //unordered_set<Stream, SameStream> activeStreams;
@@ -323,6 +226,14 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 	tempStream.raw_ip_outgoing = ip->ip_src;
 	tempStream.port_incoming = tcp->th_dport;
 	tempStream.port_outgoing = tcp->th_sport;
+
+	Stream tempStream1;
+	tempStream1.raw_ip_incoming = ip->ip_dst;
+	tempStream1.raw_ip_outgoing = ip->ip_src;
+	tempStream1.port_incoming = tcp->th_dport;
+	tempStream1.port_outgoing = tcp->th_sport;
+
+	printf("STREAM INSERT ID: %d\n", dbinterface.InsertStream(tempStream1) );
 
 
 	bool incoming=0;
