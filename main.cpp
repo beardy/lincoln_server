@@ -168,23 +168,25 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
 	printf("\nPacket number %d:\n", count);
 	count++;
 
-	/* define ethernet header */
+	// define ethernet header
 	ethernet = (struct sniff_ethernet*)(packet);
 
-	/* define/compute ip header offset */
+	// define/compute ip header offset
 	ip = (struct sniff_ip*)(packet + SIZE_ETHERNET);
 	size_ip = IP_HL(ip)*4;
-	if (size_ip < 20) {
+	if (size_ip < 20)
+	{
 		printf("   * Invalid IP header length: %u bytes\n", size_ip);
 		return;
 	}
 
-	/* print source and destination IP addresses */
+	// print source and destination IP addresses
 	printf("       From: %s\n", inet_ntoa(ip->ip_src));
 	printf("         To: %s\n", inet_ntoa(ip->ip_dst));
 
-	/* determine protocol */
-	switch(ip->ip_p) {
+	// determine protocol
+	switch(ip->ip_p)
+	{
 		case IPPROTO_TCP:
 			printf("   Protocol: TCP\n");
 			break;
@@ -226,6 +228,7 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
 	tempStream.port_incoming = tcp->th_dport;
 	tempStream.port_outgoing = tcp->th_sport;
 
+    /*
 	Stream tempStream1;
 	tempStream1.raw_ip_incoming = ip->ip_dst;
 	tempStream1.raw_ip_outgoing = ip->ip_src;
@@ -233,8 +236,10 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
 	tempStream1.port_outgoing = tcp->th_sport;
 
 	printf("STREAM INSERT ID: %d\n", dbinterface.InsertStream(tempStream1) );
+	*/
 
 
+    //TODO: Need to determine if it's incoming or not.
 	bool incoming=0;
 
 	int packet_length = ip->ip_len;
@@ -242,30 +247,50 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
 	time_t sniff_time = time(NULL);
 
 	//unordered_set<Stream>::iterator iter = activeStreams.find(tempStream);
+
+	// Find the stream that matches packet
     map<StreamKey, Stream,  LessStreamKey>::iterator iter = activeStreams.find(tempStream);
+
+    // If the stream is not found,
 	if( iter == activeStreams.end() )
 	{
+	    // Then we need to create a stream, which
+	    // requires we create a window.
 
         Window tempWindow;
-        //tempWindow.id = lastWindowID;
-        //tempWindow.stream_id = tempStream.id;
+
+        // The stream this window belongs to isnt in the DB yet,
+        // so it has no id.
+
+        tempWindow.stream_id = 0;
+
 
         tempWindow.start_time = sniff_time;
 
         if(incoming)
+        {
             tempWindow.num_packets_incoming = 1;
+            tempWindow.num_packets_outgoing = 0;
+            tempWindow.size_packets_incoming = packet_length;
+            tempWindow.size_packets_outgoing = 0;
+        }
         else
+        {
+            tempWindow.num_packets_incoming = 0;
             tempWindow.num_packets_outgoing = 1;
+            tempWindow.size_packets_incoming = 0;
+            tempWindow.size_packets_outgoing = packet_length;
+        }
+
+        // Okay, window's ready. Stream time.
 
 
 
-        printf("WINDOW INSERT ID: %d\n",  dbinterface.InsertWindow(tempWindow) );
-
-
-
+        //printf("WINDOW INSERT ID: %d\n",  dbinterface.InsertWindow(tempWindow) );
 	}
-	else
+	else // Packet belongs to an active stream!
 	{
+	    // Let's update current_window of the stream it belongs to.
         if(incoming)
         {
             iter->second.current_window.size_packets_incoming += packet_length;
@@ -283,11 +308,19 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
 
 	}
 
+    // Look through the activeStreams map and close the windows if it's time.
 	for( map<StreamKey, Stream,  LessStreamKey>::iterator i = activeStreams.begin(); i!=activeStreams.end(); i++)
 	{
+	    // How long has it been since the last time a packet was recieved?
+	    // If it's longer than WINDOW_TIME, then close window and add it to the db
         if(sniff_time - i->second.current_window.start_time >= WINDOW_TIME)
         {
             i->second.current_window.end_time = sniff_time;
+
+            // Not right: Don't want to add a stream everytime we add a window
+            i->second.current_window.stream_id = dbinterface.InsertStream( i->second );
+
+            dbinterface.InsertWindow( i->second.current_window );
 
             //DB_Interface.AddWindow( activeWindows[i->id] );
             //
@@ -302,12 +335,6 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
             i->last_window_end_time = time
             */
         }
-        /*
-        if( time - i->last_window_end_time >= WINDOW_TIME )
-        {
-            DB_Interface.AddStream(*i);
-            currentStreams.remove(i);
-        }*/
 	}
 
 
@@ -399,7 +426,8 @@ int main(int argc, char **argv)
 
 	dbinterface.EstablishConnection();
 
-	/* now we can set our callback function */
+	// now we can set our callback function:
+	// TODO: Find alternative which will allow us to write a cleanup function
 	pcap_loop(handle, num_packets, got_packet, NULL);
 
 	/* cleanup */
