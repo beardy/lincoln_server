@@ -53,10 +53,12 @@
 #include <vector>
 using namespace std;
 
-#include <unordered_set>
-using namespace __gnu_cxx;
+//#include <unordered_set>
+//using namespace __gnu_cxx;
 
 #include <mysql++/mysql++.h>
+
+#include "DatabaseInterface.h"
 
 // default snap length (maximum bytes per packet to capture)
 #define SNAP_LEN 1518
@@ -238,6 +240,8 @@ struct StreamKey
  //unordered_map<Window, u_short, hash<u_short>, SameWindow> activeWindows;
  vector<Window> activeWindows;
 
+ DatabaseInterface dbinterface;
+
 
 void
 got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
@@ -342,6 +346,8 @@ got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
             tempWindow.num_packets_incoming = 1;
         else
             tempWindow.num_packets_outgoing = 1;
+
+
 
 	}
 	else
@@ -476,6 +482,8 @@ int main(int argc, char **argv)
 		    filter_exp, pcap_geterr(handle));
 		exit(EXIT_FAILURE);
 	}
+
+	dbinterface.EstablishConnection();
 
 	/* now we can set our callback function */
 	pcap_loop(handle, num_packets, got_packet, NULL);
