@@ -126,7 +126,7 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
 
 
 //Windows are at most 300 seconds long (5 minutes)
-#define WINDOW_TIME 300
+#define WINDOW_TIME 100
 
 
  //activeStreams are the streams that are currently open,
@@ -225,21 +225,23 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
 
 
 
-	StreamKey tempStream;
+	StreamKey streamKey;
+	streamKey.raw_ip_incoming = ip->ip_dst;
+	streamKey.raw_ip_outgoing = ip->ip_src;
+	streamKey.port_incoming = tcp->th_dport;
+	streamKey.port_outgoing = tcp->th_sport;
+
+
+	Stream tempStream;
+	//ID of zero means it hasn't been added to the db yet
+	tempStream.id = 0;
 	tempStream.raw_ip_incoming = ip->ip_dst;
 	tempStream.raw_ip_outgoing = ip->ip_src;
 	tempStream.port_incoming = tcp->th_dport;
 	tempStream.port_outgoing = tcp->th_sport;
 
-    /*
-	Stream tempStream1;
-	tempStream1.raw_ip_incoming = ip->ip_dst;
-	tempStream1.raw_ip_outgoing = ip->ip_src;
-	tempStream1.port_incoming = tcp->th_dport;
-	tempStream1.port_outgoing = tcp->th_sport;
+	//printf("STREAM INSERT ID: %d\n", dbinterface.InsertStream(tempStream1) );
 
-	printf("STREAM INSERT ID: %d\n", dbinterface.InsertStream(tempStream1) );
-	*/
 
 
     //TODO: Need to determine if it's incoming or not.
@@ -252,7 +254,7 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
 	//unordered_set<Stream>::iterator iter = activeStreams.find(tempStream);
 
 	// Find the stream that matches packet
-    map<StreamKey, Stream,  LessStreamKey>::iterator iter = activeStreams.find(tempStream);
+    map<StreamKey, Stream,  LessStreamKey>::iterator iter = activeStreams.find(streamKey);
 
     // If the stream is not found,
 	if( iter == activeStreams.end() )
@@ -269,6 +271,7 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
 
 
         tempWindow.start_time = sniff_time;
+        tempWindow.end_time = sniff_time;
 
         if(incoming)
         {
@@ -286,14 +289,21 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
         }
 
         // Okay, window's ready. Stream time.
+        // We just need to create a new element in activeStream,
+        // and set it's current_window to tempWindow
 
+        tempStream.current_window = tempWindow;
+        activeStreams.insert( pair<StreamKey, Stream>(streamKey, tempStream) );
 
 
         //printf("WINDOW INSERT ID: %d\n",  dbinterface.InsertWindow(tempWindow) );
 	}
 	else // Packet belongs to an active stream!
 	{
+
 	    // Let's update current_window of the stream it belongs to.
+	    iter->second.current_window.end_time = sniff_time;
+
         if(incoming)
         {
             iter->second.current_window.size_packets_incoming += packet_length;
@@ -310,36 +320,6 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
         }
 
 	}
-
-    // Look through the activeStreams map and close the windows if it's time.
-	for( map<StreamKey, Stream,  LessStreamKey>::iterator i = activeStreams.begin(); i!=activeStreams.end(); i++)
-	{
-	    // How long has it been since the last time a packet was recieved?
-	    // If it's longer than WINDOW_TIME, then close window and add it to the db
-        if(sniff_time - i->second.current_window.start_time >= WINDOW_TIME)
-        {
-            i->second.current_window.end_time = sniff_time;
-
-            // Not right: Don't want to add a stream everytime we add a window
-            i->second.current_window.stream_id = dbinterface.InsertStream( i->second );
-
-            dbinterface.InsertWindow( i->second.current_window );
-
-            //DB_Interface.AddWindow( activeWindows[i->id] );
-            //
-
-            /*
-            //Add stream to database if
-            if(i->last_window_end_time > 0 )
-            {
-                //DB_Interface.AddStream(*i);
-            }
-
-            i->last_window_end_time = time
-            */
-        }
-	}
-
 
 
 return;
@@ -440,40 +420,65 @@ int main(int argc, char **argv)
 
     // last_time stores the last time we did window garbage collection
     last_time = time(NULL);
+    time_t current_time;
 
     while( !done )
     {
+        current_time = time(NULL);
 
         pcap_dispatch(handle, num_packets, got_packet, NULL);
 
         //Has it been WINDOW_TIME since the last time we did garbage collection?
-        if( sniff_time - last_time >= WINDOW_TIME )
+        printf("Current Windowtime: %d\n", current_time - last_time );
+        if( current_time - last_time >= WINDOW_TIME )
         {
             // If so, we go through all the active streams and their windows,
             // checking to see if they need to be closed.
-            for( map<StreamKey, Stream,  LessStreamKey>::iterator i = activeStreams.begin(); i!=activeStreams.end(); i++)
+            map<StreamKey, Stream,  LessStreamKey>::iterator i  = activeStreams.begin();
+            while(  i != activeStreams.end() )
             {
                 // How long has it been since the first time a packet in each window was recieved?
                 // If it's longer than WINDOW_TIME, then close window and add it to the db
                 if(sniff_time - i->second.current_window.start_time >= WINDOW_TIME)
                 {
+                    printf("Closing a window, inserting a stream!\n" );
                     //Dont need to do that if we always set at each packet end_time
                     //i->second.current_window.end_time = ..;
 
+                    // If the window being closed is the first in a stream (its stream_id = 0),
+                    // then the stream hasn't been added to the db yet.
+                    // Add the stream and the window to the db, reset the stream's current_window.
+
+                    i->second.current_window.stream_id = i->second.id = dbinterface.InsertStream( i->second );
+
                     dbinterface.InsertWindow( i->second.current_window );
                     i->second.current_window.id = 0;
+                    i->second.current_window.stream_id = 0;
+                    i->second.current_window.start_time = 0;
+                    i->second.current_window.end_time = 0;
+                    i->second.current_window.num_packets_incoming = 0;
+                    i->second.current_window.num_packets_outgoing = 0;
+                    i->second.current_window.size_packets_incoming = 0;
+                    i->second.current_window.size_packets_outgoing = 0;
 
                 }
                 //How long has it been since the stream has gotten a packet?
                 if(sniff_time - i->second.current_window.end_time >= WINDOW_TIME)
                 {
+                    printf("Removing an activeStream\n" );
                     // Longer than WINDOW_TIME? Remove stream from activeStreams
-                    activeStreams.erase(i);
-                    i--;
+                    map<StreamKey, Stream,  LessStreamKey>::iterator itemp = i;
+                    ++i;
+                    activeStreams.erase(itemp);
+                    printf("Removed.\n" );
+                    //i--;
+                    //continue;
                 }
+                else
+                    ++i;
             }
 
-            last_time = sniff_time;
+            last_time = current_time;
         }
 
 
