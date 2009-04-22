@@ -1,6 +1,8 @@
 
 #include "Config.h"
 
+#include <stdlib.h>
+
 bool Config::IsLocal( string ip )
 {
 
@@ -10,9 +12,18 @@ bool Config::IsLocal( string ip )
   {
 
     //if single ip address
+
     if( local_ips[i].isRange == false )
-      if (ip == local_ips[i].ip1)
-          result = true;
+    {
+
+        //null-terminated cstrs causing problem here
+        //if (ip == local_ips[i].ip1)
+        if (ip.compare( local_ips[i].ip1) == 0 || ip.compare( local_ips[i].ip1) == -1)
+        {
+            result = true;
+        }
+
+    }
 
     //if a range of ip addresses
     // Buggy...
@@ -39,44 +50,82 @@ void Config::Load( const char* filename)
         while ( getline ( in, line ) )
         {
 
-          int seperator = line.find(":");
+            if( line.find("$window_time") != string::npos )
+            {
+                getline( in, line );
+                window_time = atoi( line.c_str() );
+            }
+            if( line.find("$device") != string::npos )
+            {
+                getline( in, line );
+                device = line.c_str();
+            }
 
-          if( seperator != string::npos )
-          {
-            // colon detected -> range
+            if( line.find("$database_name") != string::npos )
+            {
+                getline( in, line );
+                database_name = line;
+            }
 
-            string ip1 = line.substr(0, seperator);
-            string ip2 = line.substr(seperator+1, 1+line.length()/2);
+            if( line.find("$server") != string::npos )
+            {
+                getline( in, line );
+                server = line;
+            }
 
-            //save ip1 and ip2 as a range
-            IPRange local_ip;
-            local_ip.isRange = true;
-            local_ip.ip1 = ip1;
-            local_ip.ip2 = ip2;
+            if( line.find("$user") != string::npos )
+            {
+                getline( in, line );
+                user = line;
+            }
 
-            local_ips.push_back( local_ip );
+            if( line.find("$pass") != string::npos )
+            {
+                getline( in, line );
+                pass = line;
+            }
 
-          }
-          else
-          {
-            // only single value
 
-            //save line as a single ip
-            IPRange local_ip;
-            local_ip.isRange = false;
-            local_ip.ip1 = line;
+            if( line.find("$local_ips") != string::npos )
+            {
 
-            cout << local_ip.ip1;
+                getline( in, line );
 
-            local_ips.push_back( local_ip );
-          }
+                int seperator = line.find(":");
 
+                if( seperator != string::npos )
+                {
+                    // colon detected -> range
+
+                    string ip1 = line.substr(0, seperator);
+                    string ip2 = line.substr(seperator+1, 1+line.length()/2);
+
+                    //save ip1 and ip2 as a range
+                    IPRange local_ip;
+                    local_ip.isRange = true;
+                    local_ip.ip1 = ip1;
+                    local_ip.ip2 = ip2;
+                    local_ips.push_back( local_ip );
+                }
+                else
+                {
+                    // only single value
+                    //save line as a single ip
+
+                    IPRange local_ip;
+                    local_ip.isRange = false;
+                    local_ip.ip1 = line;
+
+                    cout << "LOCAL IP: " << local_ip.ip1 << endl;
+                    local_ips.push_back( local_ip );
+
+                }
+            }
 
         }
-
-      }
-      else
-      {
+    }
+    else
+    {
           cerr << "Failed to load file." << endl;
-      }
+    }
 }

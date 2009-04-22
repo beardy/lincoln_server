@@ -123,8 +123,6 @@ struct sniff_tcp
 void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet);
 
 
-//Windows are at most 300 seconds long (5 minutes)
-#define WINDOW_TIME 20
 
 
  // activeStreams are the streams that are currently open,
@@ -135,6 +133,10 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
 
  DatabaseInterface dbinterface;
  Config config;
+
+ //Windows are at most 300 seconds long (5 minutes)
+#define WINDOW_TIME config.window_time
+
 
  time_t sniff_time;
  time_t last_time;
@@ -246,7 +248,6 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
 
 	sniff_time = time(NULL);
 
-	//unordered_set<Stream>::iterator iter = activeStreams.find(tempStream);
 
 	// Find the stream that matches packet
     map<StreamKey, Stream,  LessStreamKey>::iterator iter = activeStreams.find(streamKey);
@@ -323,7 +324,9 @@ return;
 int main(int argc, char **argv)
 {
 
-	char *dev = NULL;			/* capture device name */
+    config.Load( "config.txt" );
+
+	//char *dev = NULL;			/* capture device name */
 	char errbuf[PCAP_ERRBUF_SIZE];		/* error buffer */
 	pcap_t *handle;				/* packet capture handle */
 
@@ -337,6 +340,7 @@ int main(int argc, char **argv)
 
 
 	// check for capture device name on command-line
+	/*
 	if (argc == 2)
 	{
 		dev = argv[1];
@@ -348,41 +352,43 @@ int main(int argc, char **argv)
 	}
 	else
 	{
-		/* find a capture device if not specified on command-line */
+		// find a capture device if not specified on command-line
 		dev = pcap_lookupdev(errbuf);
 		if (dev == NULL)
 		{
 			fprintf(stderr, "Couldn't find default device: %s\n", errbuf);
 			exit(EXIT_FAILURE);
 		}
-	}
+	}*/
 
-	/* get network number and mask associated with capture device */
-	if (pcap_lookupnet(dev, &net, &mask, errbuf) == -1)
+	//We got dev from config file instead of command line.
+
+	// get network number and mask associated with capture device
+	if (pcap_lookupnet( config.device.c_str() , &net, &mask, errbuf) == -1)
 	{
 		fprintf(stderr, "Couldn't get netmask for device %s: %s\n",
-		    dev, errbuf);
+		    config.device.c_str() , errbuf);
 		net = 0;
 		mask = 0;
 	}
 
 	/* print capture info */
-	printf("Device: %s\n", dev);
+	printf("Device: %s\n", config.device.c_str());
 	printf("Number of packets: %d\n", num_packets);
 	printf("Filter expression: %s\n", filter_exp);
 
 	/* open capture device */
-	handle = pcap_open_live(dev, SNAP_LEN, 0, 1000, errbuf);
+	handle = pcap_open_live(config.device.c_str(), SNAP_LEN, 0, 1000, errbuf);
 	if (handle == NULL)
 	{
-		fprintf(stderr, "Couldn't open device %s: %s\n", dev, errbuf);
+		fprintf(stderr, "Couldn't open device %s: %s\n", config.device.c_str(), errbuf);
 		exit(EXIT_FAILURE);
 	}
 
 	/* make sure we're capturing on an Ethernet device [2] */
 	if (pcap_datalink(handle) != DLT_EN10MB)
 	{
-		fprintf(stderr, "%s is not an Ethernet\n", dev);
+		fprintf(stderr, "%s is not an Ethernet\n", config.device.c_str());
 		exit(EXIT_FAILURE);
 	}
 
@@ -402,8 +408,9 @@ int main(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 
-	dbinterface.EstablishConnection();
-	config.Load( "config.txt" );
+
+
+	dbinterface.EstablishConnection( config.database_name.c_str() , config.server.c_str() , config.user.c_str() , config.pass.c_str());
 
     bool done = false;
 

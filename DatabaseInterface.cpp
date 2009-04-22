@@ -3,13 +3,13 @@
 #include <stdio.h>
 using namespace std;
 
-int DatabaseInterface::EstablishConnection()
+int DatabaseInterface::EstablishConnection(const char* db, const char* server, const char* user, const char* pass)
 {
     // Connect to the sample database.
-    const char* db = 0, *server = 0, *user = 0, *pass = "";
-    db = "lincoln";
-    server = "localhost";
-    user = "goat";
+    //const char* db = 0, *server = 0, *user = 0, *pass = "";
+    //db = "lincoln";
+    //server = "localhost";
+    //user = "goat";
 
 
     conn = mysqlpp::Connection(false);

@@ -23,6 +23,13 @@ private:
     vector<IPRange> local_ips;
 
 public:
+    int window_time;
+    string device;
+    string database_name;
+    string server;
+    string user;
+    string pass;
+
     bool IsLocal( string ip );
 
     void Load( const char* filename );

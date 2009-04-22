@@ -1,5 +1,8 @@
 #Sniffer settings:
 
+$device
+eth1
+
 $window_time
 300
 
@@ -13,6 +16,9 @@ localhost
 
 $user
 goat
+
+$pass
+
 
 $local_ips
 192.168.2.7
