@@ -46,6 +46,8 @@ struct SizeTCastHasher
      u_short port_incoming;
      u_short port_outgoing;
 
+     time_t last_time;
+
      Window current_window;
 
  };

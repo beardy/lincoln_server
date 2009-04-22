@@ -145,6 +145,9 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
 
  DatabaseInterface dbinterface;
 
+ time_t sniff_time;
+ time_t last_time;
+
 
 void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 {
@@ -244,7 +247,7 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
 
 	int packet_length = ip->ip_len;
 
-	time_t sniff_time = time(NULL);
+	sniff_time = time(NULL);
 
 	//unordered_set<Stream>::iterator iter = activeStreams.find(tempStream);
 
@@ -428,7 +431,53 @@ int main(int argc, char **argv)
 
 	// now we can set our callback function:
 	// TODO: Find alternative which will allow us to write a cleanup function
-	pcap_loop(handle, num_packets, got_packet, NULL);
+
+	//pcap_
+
+	//void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
+
+    bool done = false;
+
+    // last_time stores the last time we did window garbage collection
+    last_time = time(NULL);
+
+    while( !done )
+    {
+
+        pcap_dispatch(handle, num_packets, got_packet, NULL);
+
+        //Has it been WINDOW_TIME since the last time we did garbage collection?
+        if( sniff_time - last_time >= WINDOW_TIME )
+        {
+            // If so, we go through all the active streams and their windows,
+            // checking to see if they need to be closed.
+            for( map<StreamKey, Stream,  LessStreamKey>::iterator i = activeStreams.begin(); i!=activeStreams.end(); i++)
+            {
+                // How long has it been since the first time a packet in each window was recieved?
+                // If it's longer than WINDOW_TIME, then close window and add it to the db
+                if(sniff_time - i->second.current_window.start_time >= WINDOW_TIME)
+                {
+                    //Dont need to do that if we always set at each packet end_time
+                    //i->second.current_window.end_time = ..;
+
+                    dbinterface.InsertWindow( i->second.current_window );
+                    i->second.current_window.id = 0;
+
+                }
+                //How long has it been since the stream has gotten a packet?
+                if(sniff_time - i->second.current_window.end_time >= WINDOW_TIME)
+                {
+                    // Longer than WINDOW_TIME? Remove stream from activeStreams
+                    activeStreams.erase(i);
+                    i--;
+                }
+            }
+
+            last_time = sniff_time;
+        }
+
+
+    }
 
 	/* cleanup */
 	pcap_freecode(&fp);
