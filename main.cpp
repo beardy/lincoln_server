@@ -53,11 +53,9 @@
 #include <vector>
 using namespace std;
 
-//#include <unordered_set>
-//using namespace __gnu_cxx;
-
 #include "LincolnDatatypes.h"
 #include "DatabaseInterface.h"
+#include "Config.h"
 
 // default snap length (maximum bytes per packet to capture)
 #define SNAP_LEN 1518
@@ -126,24 +124,17 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
 
 
 //Windows are at most 300 seconds long (5 minutes)
-#define WINDOW_TIME 100
+#define WINDOW_TIME 20
 
 
- //activeStreams are the streams that are currently open,
- //Streams that have at least one closed window have been added to the DB
- //unordered_set<Stream, hash<Stream>, SameStream> activeStreams;
-
- //unordered_set<Stream, StreamHasher, SameStream > activeStreams;
-
+ // activeStreams are the streams that are currently open,
+ // Streams that have at least one closed window have been added to the DB.
+ // Streams are removed from activeStreams when their last window was closed WINDOW_TIME ago.
 
  map<StreamKey, Stream,  LessStreamKey> activeStreams;
 
- //activeWindows are windows that have not finished aggregrating traffic
- //None of windows are in the database yet.
- //unordered_map<Window, u_short, hash<u_short>, SameWindow> activeWindows;
- vector<Window> activeWindows;
-
  DatabaseInterface dbinterface;
+ Config config;
 
  time_t sniff_time;
  time_t last_time;
@@ -156,13 +147,13 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
     //unordered_set<Stream, SameStream> activeStreams;
 
 
-	static int count = 1;                   /* packet counter */
+	static int count = 1;                   // packet counter
 
-	/* declare pointers to packet headers */
-	const struct sniff_ethernet *ethernet;  /* The ethernet header [1] */
-	const struct sniff_ip *ip;              /* The IP header */
-	const struct sniff_tcp *tcp;            /* The TCP header */
-	//const u_char *payload;                    /* Packet payload */
+	// declare pointers to packet headers
+	const struct sniff_ethernet *ethernet;  // The ethernet header [1]
+	const struct sniff_ip *ip;              // The IP header
+	const struct sniff_tcp *tcp;            // The TCP header
+	//const u_char *payload;                 // Packet payload
 
 	int size_ip;
 	int size_tcp;
@@ -245,7 +236,11 @@ void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *pa
 
 
     //TODO: Need to determine if it's incoming or not.
-	bool incoming=0;
+	bool incoming= config.IsLocal( inet_ntoa(ip->ip_src) );
+	if(incoming)
+        printf("Incoming Packet\n");
+	else
+        printf("Outgoing Packet\n");
 
 	int packet_length = ip->ip_len;
 
@@ -408,13 +403,7 @@ int main(int argc, char **argv)
 	}
 
 	dbinterface.EstablishConnection();
-
-	// now we can set our callback function:
-	// TODO: Find alternative which will allow us to write a cleanup function
-
-	//pcap_
-
-	//void got_packet(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
+	config.Load( "config.txt" );
 
     bool done = false;
 
@@ -426,7 +415,18 @@ int main(int argc, char **argv)
     {
         current_time = time(NULL);
 
+        //  ~~Sniffing:
+        //  Set a callback function to process each batch of packets.
+
         pcap_dispatch(handle, num_packets, got_packet, NULL);
+
+        //  ~~Garbage Collection:
+        //  Here we close windows that have been open for longer than WINDOW_TIME.
+        //  Closing a window means adding it to the DB and reseting the stream's current_window.
+        //
+        //  We also close Streams that haven't gotten a packet in longer than WINDOW_TIME.
+        //  These are already in the DB, so we just remove them from activeStreams.
+        //
 
         //Has it been WINDOW_TIME since the last time we did garbage collection?
         printf("Current Windowtime: %d\n", current_time - last_time );
@@ -441,17 +441,28 @@ int main(int argc, char **argv)
                 // If it's longer than WINDOW_TIME, then close window and add it to the db
                 if(sniff_time - i->second.current_window.start_time >= WINDOW_TIME)
                 {
-                    printf("Closing a window, inserting a stream!\n" );
-                    //Dont need to do that if we always set at each packet end_time
-                    //i->second.current_window.end_time = ..;
 
                     // If the window being closed is the first in a stream (its stream_id = 0),
-                    // then the stream hasn't been added to the db yet.
-                    // Add the stream and the window to the db, reset the stream's current_window.
+                    //  then the stream hasn't been added to the db yet.
+                    //  So add the stream and the window to the db, reset the stream's current_window.
+                    //
 
-                    i->second.current_window.stream_id = i->second.id = dbinterface.InsertStream( i->second );
+                    if( i->second.id == 0 )
+                    {
+                         printf("Inserting a Stream!\n" );
 
+                        //Important: This is where streams are added to the db.
+                        i->second.current_window.stream_id = i->second.id = dbinterface.InsertStream( i->second );
+                    }
+                    else
+                    {
+                        i->second.current_window.stream_id = i->second.id;
+                    }
+
+                    //Important: This is where windows are added to the db.
+                    printf("Inserting a Window.\n" );
                     dbinterface.InsertWindow( i->second.current_window );
+
                     i->second.current_window.id = 0;
                     i->second.current_window.stream_id = 0;
                     i->second.current_window.start_time = 0;
@@ -466,7 +477,8 @@ int main(int argc, char **argv)
                 if(sniff_time - i->second.current_window.end_time >= WINDOW_TIME)
                 {
                     printf("Removing an activeStream\n" );
-                    // Longer than WINDOW_TIME? Remove stream from activeStreams
+                    // Longer than WINDOW_TIME? Remove stream from activeStreams.
+                    // This is the only place Streams are removed from activeStreams.
                     map<StreamKey, Stream,  LessStreamKey>::iterator itemp = i;
                     ++i;
                     activeStreams.erase(itemp);
@@ -484,7 +496,7 @@ int main(int argc, char **argv)
 
     }
 
-	/* cleanup */
+	// cleanup
 	pcap_freecode(&fp);
 	pcap_close(handle);
 

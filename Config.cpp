@@ -25,12 +25,12 @@ bool Config::IsLocal( string ip )
 }
 
 
-void Config::Load( string filename)
+void Config::Load( const char* filename)
 {
 
     // ## PARSING PART
 
-    ifstream in ( "config.txt" );
+    ifstream in ( filename );
 
     if ( in.is_open() )
     {
@@ -49,10 +49,12 @@ void Config::Load( string filename)
             string ip2 = line.substr(seperator+1, 1+line.length()/2);
 
             //save ip1 and ip2 as a range
-            IPRange * local_ip = new IPRange;
-            local_ip->isRange = true;
-            local_ip->ip1 = ip1;
-            local_ip->ip2 = ip2;
+            IPRange local_ip;
+            local_ip.isRange = true;
+            local_ip.ip1 = ip1;
+            local_ip.ip2 = ip2;
+
+            local_ips.push_back( local_ip );
 
           }
           else
@@ -60,13 +62,21 @@ void Config::Load( string filename)
             // only single value
 
             //save line as a single ip
-            IPRange * local_ip = new IPRange;
-            local_ip->isRange = false;
-            local_ip->ip1 = line;
+            IPRange local_ip;
+            local_ip.isRange = false;
+            local_ip.ip1 = line;
+
+            cout << local_ip.ip1;
+
+            local_ips.push_back( local_ip );
           }
 
 
         }
 
+      }
+      else
+      {
+          cerr << "Failed to load file." << endl;
       }
 }

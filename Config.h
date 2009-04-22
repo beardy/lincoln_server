@@ -25,7 +25,7 @@ private:
 public:
     bool IsLocal( string ip );
 
-    void Load( string finename );
+    void Load( const char* filename );
 
 
 
