@@ -1,2 +1,18 @@
-#local ip:
+#Sniffer settings:
+
+$window_time
+300
+
+#Database settings:
+
+$database_name
+lincoln
+
+$server
+localhost
+
+$user
+goat
+
+$local_ips
 192.168.2.7
