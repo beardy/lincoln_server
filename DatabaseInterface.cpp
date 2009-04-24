@@ -1,3 +1,14 @@
+// LINCOLN_SERVER
+// ~~ This program is responsible for sniffing traffic on the host machine, aggregating it over a time period,
+// ~~ and uploading into the database. The client side is reponsible for generating all visualizations and analysis.
+//
+// Team: The Beard Progression-
+// Mark Calnon
+// Adam Nagle
+// Brien Smith-Martinez
+// Jim Vallandingham
+//
+// DatabaseInterface.cpp ~ This class handles communication with the mysql server. Uses mysql and mysql++ libs.
 
 #include "DatabaseInterface.h"
 #include <stdio.h>
@@ -5,35 +16,10 @@ using namespace std;
 
 int DatabaseInterface::EstablishConnection(const char* db, const char* server, const char* user, const char* pass)
 {
-    // Connect to the sample database.
-    //const char* db = 0, *server = 0, *user = 0, *pass = "";
-    //db = "lincoln";
-    //server = "localhost";
-    //user = "goat";
-
 
     conn = mysqlpp::Connection(false);
     if (conn.connect(db, server, user, pass))
     {
-        // ~~~This is example code:
-        // Retrieve a subset of the sample stock table set up by resetdb
-        // and display it.
-        /*
-        mysqlpp::Query query = conn.query("select item from stock");
-        if (mysqlpp::StoreQueryResult res = query.store())
-        {
-            cout << "We have:" << endl;
-            for (size_t i = 0; i < res.num_rows(); ++i)
-            {
-                cout << '\t' << res[i][0] << endl;
-            }
-        }
-        else
-        {
-            cerr << "Failed to get item list: " << query.error() << endl;
-            return 1;
-        }*/
-
         return 0;
     }
     else
@@ -68,16 +54,11 @@ int DatabaseInterface::InsertWindow(const Window& w)
     mysqlpp::Query query = conn.query();
 
 
-    //sprintf( buff, "INSERT INTO streams VALUES(NULL, '%u', '%u', '%d', '%d', %d, %d );",
 
     query << "INSERT INTO windows VALUES(NULL, '" << w.stream_id << "' , '"
     << mysqlpp::DateTime(w.start_time) << "' , '" << mysqlpp::DateTime(w.end_time) << "' , '"
     << w.num_packets_incoming  << "' , '" << w.num_packets_outgoing << "' , '"
     << w.size_packets_incoming << "' , '" << w.size_packets_outgoing << "' );";
-
-    //query.execute();
-
-   // w.start_time, w.end_time, w.num_packets_incoming, w.num_packets_outgoing, w.size_packets_incoming, w.size_packets_outgoing );
 
     mysqlpp::SimpleResult result = query.execute();
     printf( "%s \n", result.info());
